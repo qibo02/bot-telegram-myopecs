@@ -1,7 +1,10 @@
+import re
 import whois
 from sec import API_KEY, bot_username, mo, p, h
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+
 
 
 ################################################ COMMAND(/) SECTION ################################################
@@ -16,8 +19,6 @@ Anda boleh pilih option di bawah untuk direct ke link website myopecs atau link 
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Open a inline markup link
     await update.message.reply_text(message, reply_markup=reply_markup)
 
 #### WHOIS FUNCTION ####
@@ -36,7 +37,6 @@ async def lookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ###################################################################################################################
 
 
-
 ################################################ RESPON SECTION ################################################
 def handle_response(text: str) -> str:
     processed: str = text.lower()
@@ -48,21 +48,37 @@ def handle_response(text: str) -> str:
         return 'woff'
     
     return 'try lagi'
+####################################################################################################################
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # message_type: str = update.message.chat.type
-    text: str = update.message.text
+################################################ BANNED WORDS SECTION #############################################
 
-    # if message_type == 'group':
-    #     if bot_username in text:
-    #         new_text: str = text.replace(bot_username, '').strip()
-    #         response: str = handle_response(new_text)
-    #     else:
-    #         return
+# List of banned words
+banned_words = ["ban"]
+
+def is_message_banned(message: str) -> bool:
+    def create_pattern(word: str) -> str:
+        return r'(?i)' + re.sub(r'(\w)', r'\1+', word)
+
+    patterns = [create_pattern(word) + r'[\s]*' for word in banned_words]
+    full_pattern = r'\b(' + '|'.join(patterns) + r')\b'
     
-    # else:
-    response: str = handle_response(text)
+    return bool(re.search(full_pattern, message))
+    
+    
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text: str = update.message.text
+    user_id = update.message.from_user.id
 
+    # Check if the message contains banned words
+    if is_message_banned(text):
+        # Mention the user with a warning
+        await update.message.reply_text(f"\U000026A0 Warning to <a href='tg://user?id={user_id}'>{update.message.from_user.first_name}</a>: Your message contains banned words.", parse_mode='HTML')
+        
+        # Delete the message with banned words
+        await context.bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
+        return
+        
+    response: str = handle_response(text)
     await update.message.reply_text(response)
 ###################################################################################################################
 
@@ -71,7 +87,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f'Update {update} caused error {context.error}')
 ###################################################################################################################
-
 
 
 ################################################ MAIN ################################################
@@ -84,7 +99,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler('lookup', lookup))
 
     ## Messages
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     ## Error
     app.add_error_handler(error)
